@@ -25,11 +25,36 @@ function remove_duplicates()
   tail -n +2 ${domain}_assembly_summary.02.txt | sort -t "$TAB" -srk15 | sort -t "$TAB" -unk6 >> ${domain}_assembly_summary.03.txt
 }
 
+# Setup the assembly summaries for the following domains
 for domain in archaea bacteria
 do
   download_assembly_summary $domain
   remove_duplicates $domain
 done
+
+function fetch_genbank_catalog()
+{
+  local db=$1
+  url=ftp://ftp.ncbi.nlm.nih.gov/genbank/catalog
+  version=253
+
+  # The DNA sequence for Porcine circovirus type 2 strain MLP-22
+  # is 1726 base pairs long.
+  curl -s $url/gb${version}.catalog.${db}.txt.gz \
+    | gunzip -c \
+    | cut -d$'\t' -f2,4,5,6,7 \
+    | grep $'\\(\tRNA\t\\|\tDNA\t\\)' \
+    | grep --invert-match $'\tNoTaxID' \
+    | awk -F '\t' '{ if ($3 >= 1726) { print } }'
+}
+
+
+# Setup the genbank catalog
+exec 3>genbank.catalog.tsv
+printf "Version\tMolType\tBasePairs\tOrganism\tTaxID\n" >&3
+fetch_genbank_catalog gss >&3
+fetch_genbank_catalog other >&3
+exec 3>&-
 
 # It makes sure we have exactly the same datasets
 sha256sum --check manifest.sha256
