@@ -17,7 +17,7 @@ function remove_duplicates()
   # Remove leading #
   head -n 2 ${domain}_assembly_summary.01.txt | tail -n 1 | sed 's/# //' > ${domain}_assembly_summary.02.txt
   # I want complete genomes only
-  tail -n +2 ${domain}_assembly_summary.01.txt | grep "Complete Genome" >> ${domain}_assembly_summary.02.txt
+  tail -n +2 ${domain}_assembly_summary.01.txt | grep "Complete Genome" | grep "representative genome" >> ${domain}_assembly_summary.02.txt
 
   # Lets filter out duplicated rows by taxid and get the latest release
   TAB=$(printf '\t')
