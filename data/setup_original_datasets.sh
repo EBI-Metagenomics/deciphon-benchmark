@@ -21,7 +21,7 @@ function random_source()
 {
   local seed=$1
   local golden_ratio_32bits=1640531527
-  
+
   val=$seed
   while true;
   do
