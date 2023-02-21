@@ -18,10 +18,17 @@ y = file("$baseDir/report.config", checkIfExists: true)
 y.copyTo("$params.output_dir/$params.project_name/report.config")
 
 workflow {
-  create_clan_csv(file(params.clan_file))
-  select_hmm_by_clan_id(file(params.hmm_file), create_clan_csv(file(params.clan_file)))
+  clan_file = create_clan_csv(params.clan_file)
+  clan_id_regex = params.select_hmm_by_clan_id
+  hmm_file = select_hmm_by_clan_id(params.hmm_file, clan_file, clan_id_regex)
+  hmmdb = hmmpress(hmm_file).collect()
+  def faa_ch = Channel.fromPath("/hps/nobackup/rdf/metagenomics/research-team/horta/data/archaea/GCF_000144915.1_ASM14491v1/translated_cds.faa")
+  def aa_ch = faa_ch.map { tuple("$it.parent.parent.name", "$it.parent.name", it) }
+  /* hmmscan(hmmdb, aa_ch.map()) | publish */
 }
 
+//def hmm_file_ch = Channel.fromPath(params.hmm_file)
+//def clan_file_ch = Channel.fromPath(params.clan_file)
 /* scriptDir = file("$projectDir/script") */
 /* decyDir = file("$projectDir/decy") */
 /* groupRoot = "/horta/$workflow.runName" */
@@ -30,8 +37,23 @@ workflow {
 //  .fromList(params.domains.tokenize(","))
 //  .set { domain_specs_ch }
 
+process publish_file {
+  publishDir "$output_dir/$filepath.getName()", mode:"copy"
+
+  input:
+    path dstdir
+    path infile
+
+  output:
+    path outfile
+
+  script:
+  outfile = 
+}
+
 process create_clan_csv {
   publishDir "${params.output_dir}/${params.project_name}", mode:"copy"
+  storeDir "/hps/nobackup/rdf/metagenomics/research-team/horta/cache"
 
   input:
     path clan_sto
@@ -45,36 +67,75 @@ process create_clan_csv {
 process select_hmm_by_clan_id {
   memory "16 GB"
   publishDir "${params.output_dir}/${params.project_name}", mode:"copy"
+  storeDir "/hps/nobackup/rdf/metagenomics/research-team/horta/cache"
 
   input:
     path hmm_file
     path clan_file
+    val clan_id_regex
 
   output:
-    path "hmmfile.hmm"
+    path "db.hmm"
 
-  "select_hmm_by_clan_id.py ${hmm_file} ${clan_file} hmmfile.hmm '${params.select_hmm_by_clan_id}'"
+  "select_hmm_by_clan_id.py ${hmm_file} ${clan_file} db.hmm '${clan_id_regex}'"
 }
 
-// 
-// process download_organism_names {
-//     clusterOptions "-g $groupRoot/download_organism_names"
-//     storeDir "$params.storage/genbank"
+process hmmpress {
+  storeDir "/hps/nobackup/rdf/metagenomics/research-team/horta/cache"
+
+  input:
+    path hmm_file
+
+  output:
+    path "${hmm_file}*" ,  includeInputs: true
+
+  "hmmpress $hmm_file"
+}
+
+process hmmscan {
+  input:
+    path hmmdb
+    path fasta_file
+
+  output:
+    path "domtbl.txt"
+
+  "hmmscan -o /dev/null --noali --cut_ga --domtblout domtbl.txt --cpu 1 *.hmm $fasta_file"
+}
+
+//process hmmscan {
+//    publishDir "${params.output_dir}/${params.project_name}", mode:"copy", saveAs: { name -> "${domain}/${accession}/domtbl.txt" }
+//
+//    input:
+//      path hmmdb
+//      path fasta_file
+//
+//    output:
+//      path "domtbl.txt"
+//
+//    script:
+//    domain=fasta_file.getParent().getParent().getName()
+//    accession=fasta_file.getParent().getName()
+//    "hmmscan -o /dev/null --noali --cut_ga --domtblout domtbl.txt --cpu 1 *.hmm $fasta_file"
+//}
+
+// process hmmscan {
+//     publishDir params.publish, mode:"copy", saveAs: { name -> "${acc}/$name" }
+//     scratch true
+//     stageInMode "copy"
 // 
 //     input:
-//     val domain_spec from domain_specs_ch
+//     path hmmdb from hmmdb_ch.collect()
+//     tuple val(acc), path(amino) from cds_amino_ch
 // 
 //     output:
-//     tuple val(domain), val(nsamples), path("${domain}.txt") into domain_files_spec_ch
+//     tuple val(acc), path("domtblout.txt") into hmmscan_output_ch
 // 
 //     script:
-//     domain = domain_spec.tokenize(":")[0]
-//     nsamples = domain_spec.tokenize(":")[1]
-//     """
-//     $scriptDir/download_organism_names.py $domain
-//     """
+//     "hmmscan -o /dev/null --noali --cut_ga --domtblout domtblout.txt --cpu 1 \$hmmfile $amino"
 // }
-// 
+
+
 // process download_genbank_catalog {
 //     clusterOptions "-g $groupRoot/download_genbank_catalog"
 //     storeDir "$params.storage/genbank"
@@ -152,24 +213,6 @@ process select_hmm_by_clan_id {
 // filterClanHash = params.filterClan.digest('SHA-256')
 // filterClanHash = filterClanHash[0..3] + filterClanHash[4..7]
 // 
-// process press_hmmfile {
-//     clusterOptions "-g $groupRoot/press_hmmfile"
-//     storeDir "$params.storage/pfam/$filterClanHash/press"
-// 
-//     input:
-//     path hmmfile from hmmfile_ch
-// 
-//     output:
-//     path "*.hmm*", includeInputs: true into hmmdb_ch
-// 
-//     script:
-//     """
-//     if [ -s $hmmfile ]
-//     then
-//         hmmpress $hmmfile
-//     fi
-//     """
-// }
 // 
 // process download_genbank_gb {
 //     clusterOptions "-g $groupRoot/download_genbank_gb"
